@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/mitchellh/mapstructure"
+
 	"github.com/decentralized-identity/kerigo/pkg/derivation"
 	"github.com/decentralized-identity/kerigo/pkg/prefix"
 	"github.com/decentralized-identity/kerigo/pkg/version"
@@ -42,6 +44,11 @@ var (
 		RCT: "rct",
 		VRC: "vrc",
 		DRT: "drt",
+	}
+
+	serFields = map[ILK][]string{
+		ICP: {"v", "s", "t", "kt", "k", "n", "wt", "c"},
+		DIP: {"v", "s", "t", "kt", "k", "n", "wt", "c"},
 	}
 )
 
@@ -86,7 +93,7 @@ type Event struct {
 	Cut                           []string       `json:"wr,omitempty"`
 	Config                        []prefix.Trait `json:"c,omitempty"`
 	Permissions                   []interface{}  `json:"perm,omitempty"`
-	Seals                         []Seal         `json:"a,omitempty"`
+	Seals                         []*Seal        `json:"a,omitempty"`
 	DelegatorSeal                 *Seal          `json:"da,omitempty"`
 }
 
@@ -113,14 +120,14 @@ func (e *Event) MarshalJSON() ([]byte, error) {
 			e.Add = []string{}
 		}
 		if e.Seals == nil {
-			e.Seals = []Seal{}
+			e.Seals = []*Seal{}
 		}
 
 		return json.Marshal(&struct {
 			*EventAlias
 			Cut   []string `json:"wr"`
 			Add   []string `json:"wa"`
-			Seals []Seal   `json:"a"`
+			Seals []*Seal  `json:"a"`
 		}{
 			EventAlias: (*EventAlias)(e),
 			Cut:        e.Cut,
@@ -131,11 +138,11 @@ func (e *Event) MarshalJSON() ([]byte, error) {
 	case IXN.String():
 		// IXN events need data
 		if e.Seals == nil {
-			e.Seals = []Seal{}
+			e.Seals = []*Seal{}
 		}
 		return json.Marshal(&struct {
 			*EventAlias
-			Seals []Seal `json:"a"`
+			Seals []*Seal `json:"a"`
 		}{
 			EventAlias: (*EventAlias)(e),
 			Seals:      e.Seals,
@@ -158,6 +165,27 @@ func (e *Event) MarshalJSON() ([]byte, error) {
 			EventAlias: (*EventAlias)(e),
 			Witnesses:  e.Witnesses,
 			Config:     e.Config,
+		})
+	case VRC.String():
+		// Receipt news single Seal
+		if e.Seals == nil || len(e.Seals) != 1 {
+			return nil, errors.New("unable to serialize a receipt without a seal")
+		}
+
+		return json.Marshal(&struct {
+			Version   string `json:"v"`
+			Prefix    string `json:"i,omitempty"`
+			Sequence  string `json:"s"`
+			EventType string `json:"t"`
+			Digest    string `json:"d,omitempty"`
+			Data      *Seal  `json:"a"`
+		}{
+			Version:   e.Version,
+			Prefix:    e.Prefix,
+			Sequence:  e.Sequence,
+			EventType: e.EventType,
+			Digest:    e.Digest,
+			Data:      e.Seals[0],
 		})
 	}
 
@@ -209,6 +237,27 @@ func (e *Event) WitnessDerivation(index int) (*derivation.Derivation, error) {
 	return derivation.FromPrefix(e.Witnesses[index])
 }
 
+func (e *Event) GetDigest() (string, error) {
+	labels, ok := serFields[e.ILK()]
+	if !ok {
+		return "", fmt.Errorf("invalid Ilk %s to derive pre", e.EventType)
+	}
+	ser, err := SerializeValues(e, labels)
+
+	der, err := derivation.New(derivation.WithCode(derivation.Blake3256))
+	if err != nil {
+		return "", err
+	}
+
+	_, err = der.Derive(ser)
+	if err != nil {
+		return "", err
+	}
+
+	pre := prefix.New(der)
+	return pre.String(), nil
+}
+
 // DefaultVersionString returns a well formated version string
 // for the provided format, with 0s for size
 func DefaultVersionString(in FORMAT) string {
@@ -254,6 +303,44 @@ func Serialize(e *Event, to FORMAT) ([]byte, error) {
 	return nil, errors.New("unrecognized format")
 }
 
+func SerializeValues(e *Event, labels []string) ([]byte, error) {
+	m := map[string]interface{}{}
+	config := &mapstructure.DecoderConfig{
+		Metadata: nil,
+		Result:   &m,
+		TagName:  "json",
+	}
+
+	dec, err := mapstructure.NewDecoder(config)
+	if err != nil {
+		return nil, err
+	}
+
+	err = dec.Decode(e)
+	if err != nil {
+		return nil, err
+	}
+
+	var ser []byte
+	for _, l := range labels {
+		val, ok := m[l]
+		if !ok {
+			continue
+		}
+
+		switch t := val.(type) {
+		case string:
+			ser = append(ser, t...)
+		case []string:
+			for _, elem := range t {
+				ser = append(ser, elem...)
+			}
+		}
+	}
+
+	return ser, nil
+}
+
 // Digest returns the raw derived data of code for provided data
 func Digest(data []byte, code derivation.Code) ([]byte, error) {
 	if !code.SelfAddressing() {
@@ -289,27 +376,4 @@ func (e *Event) Serialize() ([]byte, error) {
 	}
 
 	return Serialize(e, format)
-}
-
-// Recipt generates a receipt for the provided event
-func Receipt(event *Event, code derivation.Code) (*Event, error) {
-	receipt, _ := NewEvent(
-		WithType(VRC),
-		WithSequence(event.SequenceInt()),
-		WithPrefix(event.Prefix),
-		WithDefaultVersion(JSON),
-	)
-
-	ser, err := event.Serialize()
-	if err != nil {
-		return nil, err
-	}
-
-	eventDigest, err := DigestString(ser, code)
-	if err != nil {
-		return nil, err
-	}
-	receipt.Digest = eventDigest
-
-	return receipt, nil
 }

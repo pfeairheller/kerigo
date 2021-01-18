@@ -5,9 +5,10 @@ import (
 	"crypto/rand"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+
 	"github.com/decentralized-identity/kerigo/pkg/derivation"
 	"github.com/decentralized-identity/kerigo/pkg/prefix"
-	"github.com/stretchr/testify/assert"
 )
 
 func TestNewInceptionEvent(t *testing.T) {
@@ -45,5 +46,18 @@ func TestNext(t *testing.T) {
 
 	event, err := NewEvent(WithType(ICP), WithNext(2, derivation.Blake3256, d1p, d2p, d3p))
 	assert.Nil(err)
-	assert.Equal("ED8YvDrXvGuaIVZ69XsBVA5YN2pNTfQOFwgeloVHeWKs", event.Next)
+	assert.Equal("ElHA2umfOtkTfmpkvSl6X7rrWacZT01MXb6IC61vEOcM", event.Next)
+
+	//test case from Bob demo in python
+	der, err := derivation.FromPrefix("A6zz7M08-HQSFq92sJ8KJOT2cZ47x7pXFQLPB0pckB3Q")
+	edPriv := ed25519.NewKeyFromSeed(der.Raw)
+	edPub := edPriv.Public()
+
+	basicDerivation, err := derivation.New(derivation.WithCode(derivation.Ed25519), derivation.WithRaw(edPub.(ed25519.PublicKey)))
+	basicPre := prefix.New(basicDerivation)
+
+	event, err = NewEvent(WithType(ICP), WithNext(1, derivation.Blake3256, basicPre))
+	assert.Nil(err)
+	assert.Equal("EPYuj8mq_PYYsoBKkzX1kxSPGYBWaIya3slgCOyOtlqU", event.Next)
+
 }
