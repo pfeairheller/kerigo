@@ -2,11 +2,11 @@ package event
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strconv"
 
 	"github.com/mitchellh/mapstructure"
+	"github.com/pkg/errors"
 
 	"github.com/decentralized-identity/kerigo/pkg/derivation"
 	"github.com/decentralized-identity/kerigo/pkg/prefix"
@@ -75,6 +75,12 @@ var (
 		JSON:  "JSON",
 		CBOR:  "CBOR",
 		MSGPK: "MSGPK",
+	}
+
+	formatValue = map[string]FORMAT{
+		"JSON":  JSON,
+		"CBOR":  CBOR,
+		"MSGPK": MSGPK,
 	}
 )
 
@@ -289,11 +295,38 @@ func FormatFromVersion(vs string) (FORMAT, error) {
 	return -1, errors.New("unable to determin format from version string")
 }
 
+func Format(f string) (FORMAT, error) {
+	out, ok := formatValue[f]
+	if !ok {
+		return -1, errors.New("unrecognized format")
+	}
+
+	return out, nil
+}
+
 // Serialize the provided event to the format specifeid
 func Serialize(e *Event, to FORMAT) ([]byte, error) {
 	switch to {
 	case JSON:
 		return json.Marshal(e)
+	case CBOR, MSGPK:
+		// unimplemented
+		// TODO: implement!
+		return nil, errors.New("unimplemented")
+	}
+
+	return nil, errors.New("unrecognized format")
+}
+
+func Deserialize(data []byte, from FORMAT) (*Event, error) {
+	switch from {
+	case JSON:
+		evt := &Event{}
+		err := json.Unmarshal(data, evt)
+		if err != nil {
+			return nil, errors.Wrap(err, "unable to unmarshal event from JSON")
+		}
+		return evt, nil
 	case CBOR, MSGPK:
 		// unimplemented
 		// TODO: implement!

@@ -54,9 +54,11 @@ func incept(t *testing.T, secret, next string) *Event {
 	keyPre := prefix.New(keyDer)
 
 	nextder, err := derivation.FromPrefix(next)
+	assert.NoError(t, err)
 	nextPriv := ed25519.NewKeyFromSeed(nextder.Raw)
 	nextPub := nextPriv.Public()
 	nextPubDer, err := derivation.New(derivation.WithCode(derivation.Ed25519), derivation.WithRaw(nextPub.(ed25519.PublicKey)))
+	assert.NoError(t, err)
 	nextKeyPre := prefix.New(nextPubDer)
 
 	icp, err := NewInceptionEvent(WithKeys(keyPre), WithDefaultVersion(JSON), WithNext(1, derivation.Blake3256, nextKeyPre))
