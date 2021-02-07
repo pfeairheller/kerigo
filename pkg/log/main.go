@@ -2,8 +2,10 @@ package log
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"sort"
 	"strconv"
 	"time"
@@ -282,6 +284,9 @@ func (l *Log) Apply(e *event.Message) error {
 		// return nil
 		return l.Apply(next[0])
 	}
+
+	b, _ := json.Marshal(e.Event)
+	log.Println("Added valid event to KEL event = ", string(b))
 
 	return nil
 }

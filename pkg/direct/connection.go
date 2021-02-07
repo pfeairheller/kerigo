@@ -2,8 +2,10 @@ package direct
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"regexp"
 	"strconv"
@@ -42,6 +44,9 @@ func (r *conn) Write(msg *event.Message) error {
 	if err != nil {
 		return errors.Wrap(err, "unable to right message to stream outbound")
 	}
+
+	b, _ := json.Marshal(msg)
+	log.Println(msg.Event.Prefix, "sent event:\n", string(b))
 
 	return nil
 }
@@ -113,6 +118,9 @@ func readMessage(reader io.Reader) (*event.Message, error) {
 	}
 
 	msg.Signatures = sigs
+
+	log.Println(msg.Event.Prefix, "received:")
+	log.Println(string(buff))
 
 	return msg, nil
 }

@@ -50,6 +50,8 @@ func DialTimeout(id *keri.Keri, addr string, timeout time.Duration) (*Client, er
 		return nil, errors.Wrap(err, "unable to connect after timeout")
 	}
 
+	log.Println(id.Prefix(), ":\n", "connected to", addr)
+
 	go func() {
 		err := handleConnection(o.ioc, o.id)
 		log.Printf("client connection closed with (%v)\n", err)
